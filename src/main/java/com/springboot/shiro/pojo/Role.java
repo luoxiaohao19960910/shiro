@@ -7,27 +7,20 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
-import java.util.Date;
 import java.util.List;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class User implements Serializable {
+public class Role implements Serializable {
 
     @TableId(type = IdType.AUTO)
-    private Long userId;
+    private Long roleId;
 
-    private String username;
+    private String roleName;
 
-    private String password;
-
-    private Date createTime;
-
-    private String salt;
-    //账号状态，0表示锁定，1表示正常
-    private String state;
-    //角色集合
-    private List<Role> roles;
+    private String description;
+    //权限集合
+    private List<Permission> permissions;
 
 }

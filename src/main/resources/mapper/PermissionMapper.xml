@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.springboot.shiro.mapper.PermissionMapper">
+
+    <select id="findPermisssionsByRoleId" resultType="com.springboot.shiro.pojo.Permission">
+        SELECT p.permission_name FROM role_permission rp LEFT JOIN permission p ON rp.permission_id = p.permission_id
+            WHERE rp.role_id = #{roleId}
+    </select>
+
+</mapper>

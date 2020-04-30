@@ -1,6 +1,5 @@
 package com.springboot.shiro.config;
 
-import org.apache.shiro.authc.credential.HashedCredentialsMatcher;
 import org.apache.shiro.mgt.SecurityManager;
 import org.apache.shiro.session.mgt.SessionManager;
 import org.apache.shiro.spring.LifecycleBeanPostProcessor;
@@ -28,34 +27,32 @@ public class ShiroConfig {
         //设置securityManager,将它作为方法参数自动注入进来，前提是容器中已经有securityManager这个bean
         shiroFilterFactoryBean.setSecurityManager(securityManager);
         //访问的接口需要登录，但是还没登录时，应该调用此接口
-        shiroFilterFactoryBean.setLoginUrl("/public/login");
+        shiroFilterFactoryBean.setLoginUrl("/pub/need_login");
         //登录成功，跳转的url
         shiroFilterFactoryBean.setSuccessUrl("/");
         //授权不通过跳转的url
-        shiroFilterFactoryBean.setUnauthorizedUrl("/public/refuse");
-
+        shiroFilterFactoryBean.setUnauthorizedUrl("/pub/refuse");
         //将自定义的角色过滤器配置进来，与shiroFilterFactoryBean绑定
         Map<String, Filter> filterMap = new LinkedHashMap<>();
-        //key就是过滤器名称
+        //key是自定义过滤器名称，value是自定义过滤器实例
         filterMap.put("rolesFilter",new CustomRolesFilter());
         shiroFilterFactoryBean.setFilters(filterMap);
-
         //过滤路径的顺序是自上而下(有序)，所以不能使用HashMap
         Map<String, String> map = new LinkedHashMap<>();
         //过滤路径的配置，key为匹配的过滤路径，value为过滤器的名称
         //退出登录
         map.put("/logout","logout");
         //匿名访问
-        map.put("/public/**","anon");
+        map.put("/pub/**","anon");
         //登录访问
-        map.put("/user/**","authc");
+        map.put("/authc/**","authc");
         //角色访问(shiro默认的角色过滤器规则是必须满足所有角色才能放行)
         //map.put("/admin/**","roles[admin,root]");
         //角色过滤器规则被上面重写了，所以满足任意角色即可放行
         map.put("/admin/**","rolesFilter[admin,root]");
         //权限访问
-        map.put("/video/update","perms[video:update]");
-        //其余的所有路径需要登录访问
+        map.put("/order/watch","perms[order_watch]");
+        //全局剩余的所有路径需要登录访问
         map.put("/**","authc");
         shiroFilterFactoryBean.setFilterChainDefinitionMap(map);
         return shiroFilterFactoryBean;
@@ -70,8 +67,8 @@ public class ShiroConfig {
         //使用自定义的sessionManager
         defaultWebSecurityManager.setSessionManager(sessionManager());
         //使用自定义的cacheManager
-        defaultWebSecurityManager.setCacheManager(redisCacheManager());
-        //使用自定义的realm，建议设置到最后面
+        //defaultWebSecurityManager.setCacheManager(redisCacheManager());
+        //使用自定义的realm，建议设置到最后面(有的版本可能有坑)
         defaultWebSecurityManager.setRealm(customRealm());
         return defaultWebSecurityManager;
     }
@@ -82,7 +79,17 @@ public class ShiroConfig {
     @Bean
     public CustomRealm customRealm(){
         CustomRealm customRealm = new CustomRealm();
-        customRealm.setCredentialsMatcher(hashedCredentialsMatcher());
+        customRealm.setCachingEnabled(true);
+        //启用身份验证缓存，即缓存AuthenticationInfo信息，默认false
+        customRealm.setAuthenticationCachingEnabled(true);
+        //缓存AuthenticationInfo信息的缓存名称 在ehcache-shiro.xml中有对应缓存的配置
+        customRealm.setAuthenticationCacheName("authenticationCache");
+        //启用授权缓存，即缓存AuthorizationInfo信息，默认false
+        customRealm.setAuthorizationCachingEnabled(true);
+        //缓存AuthorizationInfo信息的缓存名称  在ehcache-shiro.xml中有对应缓存的配置
+        customRealm.setAuthorizationCacheName("authorizationCache");
+        //设置自定义密码比较器
+        customRealm.setCredentialsMatcher(retryLimitHashedCredentialsMatcher());
         return customRealm;
     }
 
@@ -90,32 +97,34 @@ public class ShiroConfig {
      * 加密处理
      */
     @Bean
-    public HashedCredentialsMatcher hashedCredentialsMatcher(){
-        HashedCredentialsMatcher hashedCredentialsMatcher = new HashedCredentialsMatcher();
+    public RetryLimitHashedCredentialsMatcher retryLimitHashedCredentialsMatcher(){
+        RetryLimitHashedCredentialsMatcher retryLimitHashedCredentialsMatcher = new RetryLimitHashedCredentialsMatcher(redisCacheManager());
         //设置MD5散列算法
-        hashedCredentialsMatcher.setHashAlgorithmName("MD5");
+        retryLimitHashedCredentialsMatcher.setHashAlgorithmName("MD5");
         //散列的次数，等价于对MD5的结果再进行MD5加密
-        hashedCredentialsMatcher.setHashIterations(2);
-        return hashedCredentialsMatcher;
+        retryLimitHashedCredentialsMatcher.setHashIterations(2);
+        //是否存储为16进制
+        retryLimitHashedCredentialsMatcher.setStoredCredentialsHexEncoded(true);
+        return retryLimitHashedCredentialsMatcher;
     }
 
     /**
-     * 自定义SessionManager
+     * 自定义SessionManager，接管session的生命周期
      */
     @Bean
     public SessionManager sessionManager(){
         CustomSessionManager customSessionManager = new CustomSessionManager();
         //设置超时时间，单位是毫秒，默认为30分钟过期
-        //customSessionManager.setGlobalSessionTimeout(60000);
+        //customSessionManager.setGlobalSessionTimeout(15000);
         //配置session持久化
-        customSessionManager.setSessionDAO(redisSessionDAO());
+        //customSessionManager.setSessionDAO(redisSessionDAO());
         return customSessionManager;
     }
 
     /**
      * 配置redisManager
      */
-    //@Bean
+    @Bean
     public RedisManager redisManager(){
         RedisManager redisManager = new RedisManager();
         redisManager.setHost("127.0.0.1:6379");
@@ -125,7 +134,7 @@ public class ShiroConfig {
     /**
      * 配置具体cache实现类
      */
-    @Bean
+    //@Bean
     public RedisCacheManager redisCacheManager(){
         RedisCacheManager redisCacheManager = new RedisCacheManager();
         redisCacheManager.setRedisManager(redisManager());
@@ -137,7 +146,7 @@ public class ShiroConfig {
     /**
      * 配置具体cache实现类
      */
-    @Bean
+    //@Bean
     public RedisSessionDAO redisSessionDAO(){
         RedisSessionDAO redisSessionDAO = new RedisSessionDAO();
         redisSessionDAO.setRedisManager(redisManager());
